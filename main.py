@@ -75,7 +75,7 @@ def check_env():
 def parser_score(epoch, best_score, cur_score, accs, config, logger, mode='val'):
     flag = False
     if mode.lower() != 'test' and cur_score['all']['F1'] > best_score[0]:
-        if not config['booststrap']:
+        if not config['bootstrap']:
             for file in os.listdir('./ckpt_model/'):
                 filename = os.path.join('./ckpt_model/', file)
                 shutil.copy(filename, 'best_model/')
@@ -143,7 +143,7 @@ def main():
             pattern_dict[label][pattern] = 0
         pattern_dict[label][pattern] += 1
 
-    if config['booststrap'] or config['redistribution']:
+    if config['bootstrap'] or config['redistribution']:
         logger.info('init patterns')
         trustable_pattern = {}
         for k, v in pattern_dict.items():

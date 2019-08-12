@@ -139,10 +139,10 @@ class model(object):
 
         with tf.variable_scope('loss'):
             loss_c = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.label_ids, logits=self.logits)
-            attention = tf.clip_by_value(self.attentions, 1e-10, 1)
+            #attention = tf.clip_by_value(self.attentions, 1e-10, 1) # keas.loss内置这一步
 
             if self.config['attention_regularization']:
-                loss_a = tf.keras.losses.kullback_leibler_divergence(y_true=self.att_labels, y_pred=attention)
+                loss_a = tf.keras.losses.kullback_leibler_divergence(y_true=self.att_labels, y_pred=self.attentions)
                 self.kl = loss_a
                 self.loss = tf.reduce_mean(loss_c + self.config['beta'] * loss_a)
             else:
