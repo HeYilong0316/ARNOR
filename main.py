@@ -33,7 +33,7 @@ flags.DEFINE_integer("init_patterns_max",               20,             'Max num
 flags.DEFINE_float("pattern_threshold",                 0.5,            "Gradient clip")
 flags.DEFINE_integer("pattern_max",                     5,              'Max num of updating pattern')
 flags.DEFINE_float("beta",                              1.,             "Gradient clip")
-flags.DEFINE_integer("first_loop_epoch",                1,              'First loop epoch')
+flags.DEFINE_integer("first_loop_epoch",                10,              'First loop epoch')
 flags.DEFINE_integer("epoch",                           100,            'Epoch')
 flags.DEFINE_float("clip",                              5,                  "Gradient clip")
 flags.DEFINE_float("dropout",                           0.5,                "Dropout rate")
