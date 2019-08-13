@@ -34,7 +34,7 @@ flags.DEFINE_float("pattern_threshold",                 0.5,            "Gradien
 flags.DEFINE_integer("pattern_max",                     5,              'Max num of updating pattern')
 flags.DEFINE_float("beta",                              1.,             "Gradient clip")
 flags.DEFINE_integer("first_loop_epoch",                10,              'First loop epoch')
-flags.DEFINE_integer("epoch",                           100,            'Epoch')
+flags.DEFINE_integer("epoch",                           50,            'Epoch')
 flags.DEFINE_float("clip",                              5,                  "Gradient clip")
 flags.DEFINE_float("dropout",                           0.5,                "Dropout rate")
 flags.DEFINE_float("batchsize",                         160,                "batch size")
@@ -47,6 +47,9 @@ flags.DEFINE_boolean("attention_regularization",        True,               "Wit
 flags.DEFINE_boolean("bootstrap",                       True,               "Wither bootstrap")
 FLAGS = tf.app.flags.FLAGS
 
+
+
+logger = get_logger()
 
 def get_config():
     config = OrderedDict()
@@ -72,10 +75,20 @@ def get_config():
     config['clip'] = FLAGS.clip
     config['lr_method'] = FLAGS.optimizer
     config['restore'] = FLAGS.restore
+
+    config['sel_label'] = ['/people/person/children',                   '/business/company/founders',
+                           '/people/deceased_person/place_of_death',    '/people/person/place_of_birth',
+                           '/location/neighborhood/neighborhood_of',    '/business/person/company',
+                           '/people/person/place_lived',                '/location/country/capital',
+                           '/people/person/nationality',                '/location/location/contains']
+    #config['sel_label'] = set(config['sel_label'])
+
+
+
+
     with open('config_file', 'w', encoding='utf8') as w:
         json.dump(config, w)
     return config
-
 
 
 def train(config, logger):
@@ -217,7 +230,6 @@ def main(_):
         check_env()
         if FLAGS.clean:
             clean()
-        logger = get_logger()
         if os.path.exists('config_file'):
             with open('config_file', 'r', encoding='utf-8') as r:
                 config = json.load(r)

@@ -69,11 +69,13 @@ def get_typeDict(datasets):
     return type_vocab
 
 
-def get_labelDict(datasets):
+def get_labelDict(datasets, sel_label=None):
     label_vocab = set()
     for dataset in datasets:
         for data in dataset:
             for rel in data['relationMentions']:
+                if sel_label and rel['label'] not in sel_label:
+                    continue
                 label_vocab.add(rel['label'])
     label_vocab = sorted(label_vocab)
     label_vocab = {label: i for i, label in enumerate(label_vocab)}
@@ -226,7 +228,7 @@ def build_maps(train_datas, config, logger):
     else:
         vocab = get_vocab([train_datas])
         type_dict = get_typeDict([train_datas])
-        label_dict = get_labelDict([train_datas])
+        label_dict = get_labelDict([train_datas],  config['sel_label'])
         np.save('maps.npy', [vocab, type_dict, label_dict])
 
     config['word_num'] = len(vocab)

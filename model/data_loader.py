@@ -2,6 +2,7 @@ import numpy as np
 from tqdm import tqdm
 import random
 import re
+from main import logger
 
 from model.util import *
 
@@ -11,6 +12,7 @@ class data_loader(object):
     def __init__(self, dataset, config):
         self.dataset = dataset
         self.config = config
+        self.sel_relation = set(config['sel_label']) if config['sel_label'] else None
 
     def load(self, use_small=None):
         dataset_ret = []
@@ -35,6 +37,9 @@ class data_loader(object):
                     entity_to_type[mention] = entity['label']
 
             for rel in relation:
+                if self.sel_relation and rel['label'] not in self.sel_relation:
+                    continue
+
                 entity1 = rel['em1Text']
                 entity2 = rel['em2Text']
                 label = conver_token_to_id(rel['label'], self.config['label_dict'])
@@ -93,9 +98,9 @@ class data_loader(object):
                 dataset_ret.append([feature, positions, types, att_label, label, pattern])
             pbar.update(1)
         pbar.close()
-        print('badcase: ', badcase)
+        logger.info('badcase: {}'.format(badcase))
         self.dataset = dataset_ret
-        print(len(self.dataset))
+        logger.info('load data: {}'.format(len(self.dataset)))
 
 
     def load_v2(self, use_small=None):
@@ -174,6 +179,8 @@ class data_loader(object):
                     dataset_ret.append([feature, positions, types, att_label, label, pattern])
             pbar.update(1)
         pbar.close()
+
+        print('load data: {}'.format(len(dataset_ret)))
         self.dataset = dataset_ret
 
     def minibatch(self, batch_size, shuffle=False, redistribution=False, trustable_pattern=None):
