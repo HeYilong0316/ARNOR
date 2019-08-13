@@ -1,124 +1,88 @@
-import tensorflow as tf
+# author: heyilong
+
+
 from model.model import model
 from model.data_loader import data_loader
-from model.util import load_data_file, get_vocab, get_typeDict, get_labelDict
+from model.util import load_data_file, build_maps, clean, get_logger, check_env, parser_score
+
 import os
-import shutil
-import logging
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+import heapq
+import json
+import tensorflow as tf
+
+from tqdm import tqdm
+from collections import OrderedDict
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
+
+
+flags = tf.app.flags
+flags.DEFINE_boolean("clean",                           False,          "clean train folder")
+flags.DEFINE_boolean("train",                           False,          "Whether train the model")
+flags.DEFINE_boolean("restore",                         False,               "Wither bootstrap")
+
+# configurations for the model
+flags.DEFINE_integer("type_dim",                        50,             "Embedding size for entity type")
+flags.DEFINE_integer("position_dim",                    50,             "Embedding size for position")
+flags.DEFINE_integer("word_dim",                        100,            "Embedding size for word")
+flags.DEFINE_integer("lstm_dim",                        500,            "Num of hidden units in LSTM")
+flags.DEFINE_integer("pos_max",                         60,             "Max position")
+
+# configurations for training
+flags.DEFINE_float("init_patterns_ratio",               0.1,            "Gradient clip")
+flags.DEFINE_integer("init_patterns_max",               20,             'Max num of init patterns')
+flags.DEFINE_float("pattern_threshold",                 0.5,            "Gradient clip")
+flags.DEFINE_integer("pattern_max",                     5,              'Max num of updating pattern')
+flags.DEFINE_float("beta",                              1.,             "Gradient clip")
+flags.DEFINE_integer("first_loop_epoch",                1,              'First loop epoch')
+flags.DEFINE_integer("epoch",                           100,            'Epoch')
+flags.DEFINE_float("clip",                              5,                  "Gradient clip")
+flags.DEFINE_float("dropout",                           0.5,                "Dropout rate")
+flags.DEFINE_float("batchsize",                         160,                "batch size")
+flags.DEFINE_float("lr",                                0.001,              "Initial learning rate")
+flags.DEFINE_string("optimizer",                        "adam",             "Optimizer for training")
+flags.DEFINE_boolean("zero",                           True,               "Wither replace digits with zero")
+flags.DEFINE_boolean("lower",                           True,               "Wither lower case")
+flags.DEFINE_boolean("redistribution",                  True,               "Wither redistribution")
+flags.DEFINE_boolean("attention_regularization",        True,               "Wither attention regularization")
+flags.DEFINE_boolean("bootstrap",                       True,               "Wither bootstrap")
+FLAGS = tf.app.flags.FLAGS
 
 
 def get_config():
-    config = {}
-
-
-    config['batchsize'] = 256
-
-    config['word_dim'] = 100
-    config['position_dim'] = 50
-    config['type_dim'] = 50
-    config['hidden_dim'] = 500
-
-    config['pos_max'] = 60
-
-    config['redistribution'] = True
-    config['attention_regularization'] = True
-    config['bootstrap'] = True
-    config['zero'] = True
-    config['lower'] = True
-
-    config['first_loop_epoch'] = 10
-    config['epoch'] = 100
-
-    config['init_patterns_ratio'] = 0.1
-    config['init_patterns_max'] = 20
-
-    config['pattern_threshold'] = 0.5
-    config['pattern_max'] = 5
-
-    config['beta'] = 1.
-    config['lr'] = 0.001
-    config['clip'] = 5.
-    config['lr_method'] = 'adam'
-
-    config['restore'] = False
-
+    config = OrderedDict()
+    config['batchsize'] = FLAGS.batchsize
+    config['word_dim'] = FLAGS.word_dim
+    config['position_dim'] = FLAGS.position_dim
+    config['type_dim'] = FLAGS.type_dim
+    config['hidden_dim'] = FLAGS.lstm_dim
+    config['pos_max'] = FLAGS.pos_max
+    config['redistribution'] = FLAGS.redistribution
+    config['attention_regularization'] = FLAGS.attention_regularization
+    config['bootstrap'] = FLAGS.bootstrap
+    config['zero'] = FLAGS.zero
+    config['lower'] = FLAGS.lower
+    config['first_loop_epoch'] = FLAGS.first_loop_epoch
+    config['epoch'] = FLAGS.epoch
+    config['init_patterns_ratio'] = FLAGS.init_patterns_ratio
+    config['init_patterns_max'] = FLAGS.init_patterns_max
+    config['pattern_threshold'] = FLAGS.pattern_threshold
+    config['pattern_max'] = FLAGS.pattern_max
+    config['beta'] = FLAGS.beta
+    config['lr'] = FLAGS.lr
+    config['clip'] = FLAGS.clip
+    config['lr_method'] = FLAGS.optimizer
+    config['restore'] = FLAGS.restore
+    with open('config_file', 'w', encoding='utf8') as w:
+        json.dump(config, w)
     return config
 
-def get_logger():
-    logger = logging.getLogger("logger")
-    handler1 = logging.StreamHandler()
-    handler2 = logging.FileHandler(filename="train.log")
-
-    logger.setLevel(logging.INFO)
-    handler1.setLevel(logging.INFO)
-    handler2.setLevel(logging.INFO)
-
-    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    handler1.setFormatter(formatter)
-    handler2.setFormatter(formatter)
-
-    logger.addHandler(handler1)
-    logger.addHandler(handler2)
-    return logger
 
 
-# chech env
-def check_env():
-    if not os.path.exists('./ckpt_model'):
-        os.mkdir('./ckpt_model')
-    if not os.path.exists('./best_model'):
-        os.mkdir('./best_model')
-
-
-
-def parser_score(epoch, best_score, cur_score, accs, config, logger, mode='val'):
-    flag = False
-    if mode.lower() != 'test' and cur_score['all']['F1'] > best_score[0]:
-        if not config['bootstrap']:
-            for file in os.listdir('./ckpt_model/'):
-                filename = os.path.join('./ckpt_model/', file)
-                shutil.copy(filename, 'best_model/')
-
-        best_score[0] = cur_score['all']['F1']
-        best_score[1] = epoch
-        best_score[2] = cur_score
-        best_score[3] = accs
-        flag = True
-
-    logger.info('epoch: {}'.format(epoch))
-    logger.info('acc: {}'.format(accs))
-
-    for k, v in cur_score.items():
-        logger.info('{:<45d}:\tP: {:>.2f}\tR: {:>.2f}\tF1: {:>.2f}'.format(k, v['P'] * 100, v['R'] * 100, v['F1'] * 100))
-    if mode.lower() != 'test':
-        logger.info('best_F1:{:^.2f} in epoch:{}'.format(best_score[0] * 100, best_score[1]))
-
-    return best_score, flag
-
-
-
-def main():
-    logger = get_logger()
-    config = get_config()
+def train(config, logger):
 
     train_datas = load_data_file('datas/train.json', zero=config['zero'], lower=config['lower'])
-    vocab = get_vocab([train_datas])
-    type_dict = get_typeDict([train_datas])
-    label_dict = get_labelDict([train_datas])
-
-    config['word_num'] = len(vocab)
-    config['type_num'] = len(type_dict)
-    config['label_num'] = len(label_dict)
-    config['position_num'] = max([len(d['sentText'].split(' ')) for d in train_datas]) if config['pos_max'] < 0 else config['pos_max']
-
-    for k, v in config.items():
-        logger.info('config {}: {}'.format(k, v))
-
-    config['vocab'] = vocab
-    config['type_dict'] = type_dict
-    config['label_dict'] = label_dict
-
+    config = build_maps(train_datas, config, logger)
 
     train_data_loader = data_loader(train_datas, config)
     train_data_loader.load()
@@ -131,39 +95,39 @@ def main():
     test_data_loader = data_loader(test_datas, config)
     test_data_loader.load()
 
-
-
-    pattern_dict = {}
-    for data in train_data_loader.dataset:
-        pattern = data[-1]
-        label = data[-2]
-        if label not in pattern_dict:
-            pattern_dict[label] = {}
-        if pattern not in pattern_dict[label]:
-            pattern_dict[label][pattern] = 0
-        pattern_dict[label][pattern] += 1
+    trustable_pattern = None
 
     if config['bootstrap'] or config['redistribution']:
         logger.info('init patterns')
+
+        pattern_dict = {}
+        for data in train_data_loader.dataset:
+            pattern = data[-1]
+            label = data[-2]
+            if label not in pattern_dict:
+                pattern_dict[label] = {}
+            if pattern not in pattern_dict[label]:
+                pattern_dict[label][pattern] = 0
+            pattern_dict[label][pattern] += 1
+
         trustable_pattern = {}
         for k, v in pattern_dict.items():
-            v = sorted(v.items(), key=lambda x: x[1], reverse=True)
             sel_num = int(config['init_patterns_ratio'] * len(v))
-            sel_num =  config['init_patterns_max'] if sel_num> config['init_patterns_max'] else sel_num
-            trustable_pattern[k] = set(v1 for v1, v2 in v[:sel_num])
-        config['trustable_pattern'] = trustable_pattern
+            sel_num = config['init_patterns_max'] if sel_num > config['init_patterns_max'] else sel_num
+            v = heapq.nlargest(sel_num, v.items(), key=lambda x: x[1])
+            trustable_pattern[k] = set(v1 for v1, v2 in v)
 
 
     with tf.Graph().as_default() as g:
-        train_model = model(config, 'train')
+        train_model = model(config, 'train', trustable_pattern)
         train_model.build(g)
 
     with tf.Graph().as_default() as g:
-        val_model = model(config, 'val')
+        val_model = model(config, 'val', trustable_pattern)
         val_model.build(g)
 
-    best_score = [-1., 0, None, None]
 
+    best_score = [-1., 0, None, None]
     # for not boostrap or firt loop of bootstrap
     loop = config['first_loop_epoch'] if config['bootstrap'] else config['epoch']
     logger.info('not bootstrap or first loop of bootstrap:{}'.format(loop))
@@ -183,31 +147,27 @@ def main():
             parser_score(epoch, '', test_score, test_accs, config, logger, 'test')
         logger.info('******\n')
 
-
     # for other bootstrap loop
     if config['bootstrap']:
-
+        logger.info('for other bootstrap loop')
         # update patterns
         pattern_condidates = {}
         for kl, pattern, label in zip(kls, patterns, labels):
             pattern_score = 1 / (1 + kl)
-            if pattern_score>config['pattern_threshold']:
+            if pattern_score>config['pattern_threshold'] and pattern not in trustable_pattern:
                 if label not in pattern_condidates:
                     pattern_condidates[label] = []
                 pattern_condidates[label].append((pattern, pattern_score))
 
-        for label in labels:
+        print('for update patterns')
+        for label in config['label_dict'].keys():
             if label not in pattern_condidates:
                 continue
-            pattern_condidates[label] = sorted(pattern_condidates[label], key=lambda x: x[1], reverse=True)
-            count = 0
-            for condidate in pattern_condidates[label]:
-                if condidate not in config['trustable_pattern'][label]:
-                    config['trustable_pattern'][label].add(condidate)
-                    count+=1
-                if count >= config['pattern_max'] :
-                    break
-        train_model.update_trustable_pattern(config)
+            num = len(pattern_condidates[label]) if len(pattern_condidates[label]) > config['pattern_max'] \
+                else config['pattern_max']
+            pattern_condidates_label = heapq.nlargest(num, pattern_condidates[label], key=lambda x: x[1])
+            trustable_pattern[label].update(pattern_condidates_label)
+        train_model.update_trustable_pattern(trustable_pattern)
 
         for epoch in range(config['epoch'] - config['first_loop_epoch']):
             logger.info('***TRAIN: {}***'.format(epoch))
@@ -226,30 +186,42 @@ def main():
                 parser_score(epoch, '', test_score, test_accs, config, logger, 'test')
             logger.info('******\n')
 
-            # update patterns
-            pattern_condidates = {}
-            for kl, pattern, label in zip(kls, patterns, labels):
-                pattern_score = 1 / (1 + kl)
-                if pattern_score>config['pattern_threshold']:
-                    if label not in pattern_condidates:
-                        pattern_condidates[label] = []
-                    pattern_condidates[label].append((pattern, pattern_score))
-
-            for label in labels:
+        # update patterns
+        pattern_condidates = {}
+        for kl, pattern, label in zip(kls, patterns, labels):
+            pattern_score = 1 / (1 + kl)
+            if pattern_score>config['pattern_threshold'] and pattern not in trustable_pattern:
                 if label not in pattern_condidates:
-                    continue
-                pattern_condidates[label] = sorted(pattern_condidates[label], key=lambda x: x[1], reverse=True)
-                count = 0
-                for condidate in pattern_condidates[label]:
-                    if condidate not in config['trustable_pattern'][label]:
-                        config['trustable_pattern'][label].add(condidate)
-                        count+=1
-                    if count >= config['pattern_max'] :
-                        break
-            train_model.update_trustable_pattern(config)
+                    pattern_condidates[label] = []
+                pattern_condidates[label].append((pattern, pattern_score))
+
+        print('for update patterns')
+        for label in config['label_dict'].keys():
+            if label not in pattern_condidates:
+                continue
+            num = len(pattern_condidates[label]) if len(pattern_condidates[label]) > config['pattern_max'] \
+                else config['pattern_max']
+            pattern_condidates_label = heapq.nlargest(num, pattern_condidates[label], key=lambda x: x[1])
+            trustable_pattern[label].update(pattern_condidates_label)
+        train_model.update_trustable_pattern(trustable_pattern)
+
+
+def main(_):
+    if FLAGS.train:
+        check_env()
+        if FLAGS.clean:
+            clean()
+        logger = get_logger()
+        if os.path.exists('config_file'):
+            with open('config_file', 'r', encoding='utf-8') as r:
+                config = json.load(r)
+        else:
+            config = get_config()
+
+        train(config, logger)
 
 
 if __name__ == '__main__':
-    main()
 
+    tf.app.run(main)
 

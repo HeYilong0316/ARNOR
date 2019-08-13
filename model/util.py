@@ -1,5 +1,7 @@
 import re
 import json
+import os
+import logging
 
 
 def conver_num_to_zero(string):
@@ -145,5 +147,94 @@ def padding(batch, level=0, pad=0):
                 batch[i][j] += [pad] * (max_len_1 - len(batch[i][j]))
             batch[i] += [[pad] * max_len_1 for _ in range(max_len_0 - len(batch[i]))]
         return batch
+
+
+def clean():
+    os.remove('maps.npy')
+    os.remove('config_file')
+    for file in os.listdir('./ckpt_model/'):
+        filename = os.path.join('./ckpt_model/', file)
+        os.remove(filename)
+    for file in os.listdir('./best_model/'):
+        filename = os.path.join('./best_model/', file)
+        os.remove(filename)
+
+
+
+def get_logger():
+    logger = logging.getLogger("logger")
+    handler1 = logging.StreamHandler()
+    handler2 = logging.FileHandler(filename="train.log")
+
+    logger.setLevel(logging.INFO)
+    handler1.setLevel(logging.INFO)
+    handler2.setLevel(logging.INFO)
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    handler1.setFormatter(formatter)
+    handler2.setFormatter(formatter)
+
+    logger.addHandler(handler1)
+    logger.addHandler(handler2)
+    return logger
+
+
+# chech env
+def check_env():
+    if not os.path.exists('./ckpt_model'):
+        os.mkdir('./ckpt_model')
+    if not os.path.exists('./best_model'):
+        os.mkdir('./best_model')
+
+
+def parser_score(epoch, best_score, cur_score, accs, config, logger, mode='val'):
+    flag = False
+    if mode.lower() != 'test' and cur_score['all']['F1'] > best_score[0]:
+        if not config['bootstrap']:
+            for file in os.listdir('./ckpt_model/'):
+                filename = os.path.join('./ckpt_model/', file)
+                shutil.copy(filename, 'best_model/')
+
+        best_score[0] = cur_score['all']['F1']
+        best_score[1] = epoch
+        best_score[2] = cur_score
+        best_score[3] = accs
+        flag = True
+
+    logger.info('epoch: {}'.format(epoch))
+    logger.info('acc: {}'.format(accs))
+
+    for k, v in cur_score.items():
+        logger.info('{:<50}:\tP: {:>.2f}\tR: {:>.2f}\tF1: {:>.2f}'.format(k, v['P'] * 100, v['R'] * 100, v['F1'] * 100))
+    if mode.lower() != 'test':
+        logger.info('best_F1:{:^.2f} in epoch:{}'.format(best_score[0] * 100, best_score[1]))
+
+    return best_score, flag
+
+
+def build_maps(train_datas, config, logger):
+    # build maps file
+    if os.path.exists('maps.npy'):
+        vocab, type_dict, label_dict = np.load('maps.npy')
+    else:
+        vocab = np.load('label_dict.npy')
+        type_dict = get_typeDict([train_datas])
+        label_dict = get_labelDict([train_datas])
+        np.save('maps.npy', [vocab, type_dict, label_dict])
+
+    config['word_num'] = len(vocab)
+    config['type_num'] = len(type_dict)
+    config['label_num'] = len(label_dict)
+    config['position_num'] =config['pos_max'] if config['pos_max'] > 0 \
+        else max([len(d['sentText'].split(' ')) for d in train_datas])
+
+    for k, v in config.items():
+        logger.info('config {}: {}'.format(k, v))
+
+    config['vocab'] = vocab
+    config['type_dict'] = type_dict
+    config['label_dict'] = label_dict
+
+    return config
 
 

@@ -6,10 +6,11 @@ import numpy as np
 
 
 class model(object):
-    def __init__(self, config, mode):
+    def __init__(self, config, mode, trustable_pattern=None):
         self.config = config
         self.lr = config['lr'] if 'lr' in config else None
         self.id_to_label = {v: k for k, v in self.config['label_dict'].items()}
+        self.trustable_pattern = trustable_pattern
         self.mode = mode
 
     def placeholder_op(self):
@@ -248,7 +249,7 @@ class model(object):
         train_data_iter = train_data.minibatch(self.config['batchsize'],
                                                shuffle=True,
                                                redistribution=self.config['redistribution'],
-                                               trustable_pattern=self.config['trustable_pattern'])
+                                               trustable_pattern=self.trustable_pattern)
 
         pbar = tqdm(total=all_iter)
 
@@ -343,5 +344,5 @@ class model(object):
         return cur_score, accs
 
 
-    def update_trustable_pattern(self, config):
-        self.config['trustable_pattern'] = config['trustable_pattern']
+    def update_trustable_pattern(self, trustable_pattern ):
+        self.trustable_pattern  =  trustable_pattern
