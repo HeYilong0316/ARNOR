@@ -10,15 +10,14 @@ import heapq
 import json
 import tensorflow as tf
 
-from tqdm import tqdm
 from collections import OrderedDict
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
 
 
 flags = tf.app.flags
-flags.DEFINE_boolean("clean",                           False,          "clean train folder")
-flags.DEFINE_boolean("train",                           False,          "Whether train the model")
+flags.DEFINE_boolean("clean",                           True,          "clean train folder")
+flags.DEFINE_boolean("train",                           True,          "Whether train the model")
 flags.DEFINE_boolean("restore",                         False,               "Wither bootstrap")
 
 # configurations for the model
@@ -41,7 +40,7 @@ flags.DEFINE_float("dropout",                           0.5,                "Dro
 flags.DEFINE_float("batchsize",                         160,                "batch size")
 flags.DEFINE_float("lr",                                0.001,              "Initial learning rate")
 flags.DEFINE_string("optimizer",                        "adam",             "Optimizer for training")
-flags.DEFINE_boolean("zero",                           True,               "Wither replace digits with zero")
+flags.DEFINE_boolean("zero",                            True,               "Wither replace digits with zero")
 flags.DEFINE_boolean("lower",                           True,               "Wither lower case")
 flags.DEFINE_boolean("redistribution",                  True,               "Wither redistribution")
 flags.DEFINE_boolean("attention_regularization",        True,               "Wither attention regularization")
@@ -80,23 +79,25 @@ def get_config():
 
 
 def train(config, logger):
-
+    print('load train data')
     train_datas = load_data_file('datas/train.json', zero=config['zero'], lower=config['lower'])
     config = build_maps(train_datas, config, logger)
 
     train_data_loader = data_loader(train_datas, config)
     train_data_loader.load()
 
+    print('load val data')
     val_datas = load_data_file('datas/dev.json', zero=config['zero'], lower=config['lower'])
     val_data_loader = data_loader(val_datas, config)
     val_data_loader.load()
 
+    print('load test data')
     test_datas = load_data_file('datas/test.json', zero=config['zero'], lower=config['lower'])
     test_data_loader = data_loader(test_datas, config)
     test_data_loader.load()
 
-    trustable_pattern = None
 
+    trustable_pattern = None
     if config['bootstrap'] or config['redistribution']:
         logger.info('init patterns')
 
@@ -127,17 +128,19 @@ def train(config, logger):
         val_model.build(g)
 
 
-    best_score = [-1., 0, None, None]
     # for not boostrap or firt loop of bootstrap
+    best_score = [-1., 0, None, None]
     loop = config['first_loop_epoch'] if config['bootstrap'] else config['epoch']
+
     logger.info('not bootstrap or first loop of bootstrap:{}'.format(loop))
     for epoch in range(loop):
-        logger.info('***TRAIN: {}***'.format(epoch))
 
+        logger.info('***TRAIN: {}***'.format(epoch))
         if config['attention_regularization']:
             attentions, kls, patterns, labels = train_model.run_train(train_data_loader)
         else:
             patterns, labels = train_model.run_train(train_data_loader)
+
         logger.info('***VAL***')
         cur_score, accs = val_model.run_evaule(val_data_loader)
         best_score, is_new = parser_score(epoch, best_score, cur_score, accs, config, logger)
@@ -147,9 +150,11 @@ def train(config, logger):
             parser_score(epoch, '', test_score, test_accs, config, logger, 'test')
         logger.info('******\n')
 
+
     # for other bootstrap loop
     if config['bootstrap']:
         logger.info('for other bootstrap loop')
+
         # update patterns
         pattern_condidates = {}
         for kl, pattern, label in zip(kls, patterns, labels):
@@ -168,6 +173,7 @@ def train(config, logger):
             pattern_condidates_label = heapq.nlargest(num, pattern_condidates[label], key=lambda x: x[1])
             trustable_pattern[label].update(pattern_condidates_label)
         train_model.update_trustable_pattern(trustable_pattern)
+
 
         for epoch in range(config['epoch'] - config['first_loop_epoch']):
             logger.info('***TRAIN: {}***'.format(epoch))

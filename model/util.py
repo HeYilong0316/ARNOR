@@ -2,6 +2,7 @@ import re
 import json
 import os
 import logging
+import numpy as np
 
 
 def conver_num_to_zero(string):
@@ -35,9 +36,8 @@ def load_data_file(filename, zero=True, lower=True):
     return dataset
 
 
-def get_vocab(datasets, zero=True, lower=True):
+def get_vocab(datasets):
     vocab = set()
-    type_vocab = set()
     for dataset in datasets:
         for data in dataset:
             sentence = data['sentText'].split(' ')
@@ -150,14 +150,21 @@ def padding(batch, level=0, pad=0):
 
 
 def clean():
-    os.remove('maps.npy')
-    os.remove('config_file')
+
+    if os.path.exists('maps.npy'):
+        os.remove('maps.npy')
+
+    if os.path.exists('config_file'):
+        os.remove('config_file')
+
     for file in os.listdir('./ckpt_model/'):
         filename = os.path.join('./ckpt_model/', file)
-        os.remove(filename)
+        if os.path.exists(filename):
+            os.remove(filename)
     for file in os.listdir('./best_model/'):
         filename = os.path.join('./best_model/', file)
-        os.remove(filename)
+        if os.path.exists(filename):
+            os.remove(filename)
 
 
 
@@ -205,7 +212,7 @@ def parser_score(epoch, best_score, cur_score, accs, config, logger, mode='val')
     logger.info('acc: {}'.format(accs))
 
     for k, v in cur_score.items():
-        logger.info('{:<50}:\tP: {:>.2f}\tR: {:>.2f}\tF1: {:>.2f}'.format(k, v['P'] * 100, v['R'] * 100, v['F1'] * 100))
+        logger.info('{:<50}:\tP: {:>10.2f}\tR: {:>10.2f}\tF1: {:>10.2f}'.format(k, v['P'] * 100, v['R'] * 100, v['F1'] * 100))
     if mode.lower() != 'test':
         logger.info('best_F1:{:^.2f} in epoch:{}'.format(best_score[0] * 100, best_score[1]))
 
@@ -217,7 +224,7 @@ def build_maps(train_datas, config, logger):
     if os.path.exists('maps.npy'):
         vocab, type_dict, label_dict = np.load('maps.npy')
     else:
-        vocab = np.load('label_dict.npy')
+        vocab = get_vocab([train_datas])
         type_dict = get_typeDict([train_datas])
         label_dict = get_labelDict([train_datas])
         np.save('maps.npy', [vocab, type_dict, label_dict])
