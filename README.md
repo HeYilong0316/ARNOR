@@ -22,14 +22,14 @@ Download the data and put them in the datas folder.
 `--user_small=True` means use 100 datas to debug
 
 ## Structure
-│  main.py
-│  tree.txt
-│  
-├─datas
-│      dev.json
-│      test.json
-│      train.json
-│      
+\│  main.py
+\│  tree.txt
+\│  
+\├─datas
+\│      dev.json
+\│      test.json
+\│      train.json
+\│      
 └─model
         data_loader.py
         model.py
