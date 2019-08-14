@@ -4,6 +4,7 @@ Here is the original [paper](https://www.aclweb.org/anthology/P19-1135) and [rep
 
 ## Requirement:
 python 3.7
+
 tensorflow 1.13
 ## Data
 Please refer to [here](https://github.com/PaddlePaddle/models/tree/develop/PaddleNLP/Research/ACL2019-ARNOR)
