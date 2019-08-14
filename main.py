@@ -205,7 +205,7 @@ def train(config, logger):
             if is_new:
                 logger.info('***TEST***')
                 test_score, test_accs = val_model.run_evaule(test_data_loader)
-                parser_score(epoch, '', test_score, test_accs, config, logger, 'test')
+                parser_score(epoch, '', test_score, test_accs, logger, 'test')
             logger.info('******\n')
 
         # update patterns
@@ -263,7 +263,7 @@ def test(config, logger):
 
     logger.info('***TEST***')
     test_score, test_accs = test_model.run_evaule(test_data_loader)
-    parser_score(0, '', test_score, test_accs, config, logger, 'test')
+    parser_score(0, '', test_score, test_accs, logger, 'test')
     logger.info('******\n')
 
 

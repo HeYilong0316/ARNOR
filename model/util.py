@@ -199,13 +199,12 @@ def check_env():
         os.mkdir('./best_model')
 
 
-def parser_score(epoch, best_score, cur_score, accs, config, logger, mode='val'):
+def parser_score(epoch, best_score, cur_score, accs, logger, mode='val'):
     flag = False
     if mode.lower() != 'test' and cur_score['all']['F1'] > best_score[0]:
-        if not config['bootstrap']:
-            for file in os.listdir('./ckpt_model/'):
-                filename = os.path.join('./ckpt_model/', file)
-                shutil.copy(filename, 'best_model/')
+        for file in os.listdir('./ckpt_model/'):
+            filename = os.path.join('./ckpt_model/', file)
+            shutil.copy(filename, 'best_model/')
 
         best_score[0] = cur_score['all']['F1']
         best_score[1] = epoch
