@@ -40,5 +40,10 @@ Download the data and put them in the datas folder.
 ## Main results
 ### version 1.0 datas
 
+-|P|R|F1
+-|-|-|-
+DEV|94.36|54.28|68.91
+TEST|90.00|51.51|65.52
+
 ### version 2.0 datas
 continue
