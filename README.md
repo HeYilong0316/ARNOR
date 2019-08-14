@@ -10,7 +10,7 @@ Please refer to [here](https://github.com/PaddlePaddle/models/tree/develop/Paddl
 
 Download the data and put them in the datas folder.
 ## How to run the code
-1. run the code t0 train the model and then config_file and maps.npy will be generated to store model parameters
+1. run the code to train the model and then config_file and maps.npy will be generated to store model parameters
 >python main.py --train=True --clean=True
 2. test
 >python main.py --restore=True
