@@ -8,6 +8,7 @@ from model.util import load_data_file, build_maps, clean, get_logger, check_env,
 import os
 import heapq
 import json
+import numpy as np
 import tensorflow as tf
 
 from collections import OrderedDict
@@ -16,9 +17,10 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
 
 
 flags = tf.app.flags
-flags.DEFINE_boolean("clean",                           True,          "clean train folder")
-flags.DEFINE_boolean("train",                           True,          "Whether train the model")
-flags.DEFINE_boolean("restore",                         False,               "Wither bootstrap")
+flags.DEFINE_boolean("clean",                           False,          "clean train folder")
+flags.DEFINE_boolean("train",                           False,          "Whether train the model")
+flags.DEFINE_boolean("restore",                         False,          "Wither bootstrap")
+flags.DEFINE_boolean("use_small",                       False,          "Wither use small data")
 
 # configurations for the model
 flags.DEFINE_integer("type_dim",                        50,             "Embedding size for entity type")
@@ -49,7 +51,7 @@ FLAGS = tf.app.flags.FLAGS
 
 
 
-logger = get_logger()
+
 
 def get_config():
     config = OrderedDict()
@@ -81,13 +83,8 @@ def get_config():
                            '/location/neighborhood/neighborhood_of',    '/business/person/company',
                            '/people/person/place_lived',                '/location/country/capital',
                            '/people/person/nationality',                '/location/location/contains']
-    #config['sel_label'] = set(config['sel_label'])
 
 
-
-
-    with open('config_file', 'w', encoding='utf8') as w:
-        json.dump(config, w)
     return config
 
 
@@ -97,17 +94,23 @@ def train(config, logger):
     config = build_maps(train_datas, config, logger)
 
     train_data_loader = data_loader(train_datas, config)
-    train_data_loader.load()
+    badcase = train_data_loader.load(config['user_small'])
+    logger.info('train datas: {}'.format(len(train_data_loader)))
+    logger.info('train badcase: {}'.format(badcase))
 
     print('load val data')
     val_datas = load_data_file('datas/dev.json', zero=config['zero'], lower=config['lower'])
     val_data_loader = data_loader(val_datas, config)
-    val_data_loader.load()
+    badcase = val_data_loader.load(config['user_small'])
+    logger.info('val datas: {}'.format(len(val_data_loader)))
+    logger.info('val badcase: {}'.format(badcase))
 
     print('load test data')
     test_datas = load_data_file('datas/test.json', zero=config['zero'], lower=config['lower'])
     test_data_loader = data_loader(test_datas, config)
-    test_data_loader.load()
+    badcase = test_data_loader.load(config['user_small'])
+    logger.info('test datas: {}'.format(len(test_data_loader)))
+    logger.info('test badcase: {}'.format(badcase))
 
 
     trustable_pattern = None
@@ -225,7 +228,48 @@ def train(config, logger):
         train_model.update_trustable_pattern(trustable_pattern)
 
 
+def test(config, logger):
+
+    print('load test data')
+
+    if os.path.exists('maps.npy'):
+        vocab, type_dict, label_dict = np.load('maps.npy')
+    else:
+        raise FileNotFoundError('can not find maps.npy')
+
+    for k, v in config.items():
+        logger.info('config {}: {}'.format(k, v))
+
+    config['vocab'] = vocab
+    config['type_dict'] = type_dict
+    config['label_dict'] = label_dict
+
+    config['word_num'] = len(vocab)
+    config['type_num'] = len(type_dict)
+    config['label_num'] = len(label_dict)
+    config['position_num'] = config['pos_max']
+
+    test_datas = load_data_file('datas/test.json', zero=config['zero'], lower=config['lower'])
+    test_data_loader = data_loader(test_datas, config)
+    badcase = test_data_loader.load()
+    logger.info('test datas: {}'.format(len(test_data_loader)))
+    logger.info('test badcase: {}'.format(badcase))
+
+
+    with tf.Graph().as_default() as g:
+        test_model = model(config, 'test')
+        test_model.build(g)
+
+
+    logger.info('***TEST***')
+    test_score, test_accs = test_model.run_evaule(test_data_loader)
+    parser_score(0, '', test_score, test_accs, config, logger, 'test')
+    logger.info('******\n')
+
+
+
 def main(_):
+    logger = get_logger()
     if FLAGS.train:
         check_env()
         if FLAGS.clean:
@@ -237,6 +281,14 @@ def main(_):
             config = get_config()
 
         train(config, logger)
+    else:
+        if os.path.exists('config_file'):
+            with open('config_file', 'r', encoding='utf-8') as r:
+                config = json.load(r)
+        else:
+            raise FileNotFoundError('can not find config_file')
+
+        test(config, logger)
 
 
 if __name__ == '__main__':

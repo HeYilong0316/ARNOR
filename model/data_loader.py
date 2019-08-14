@@ -2,8 +2,6 @@ import numpy as np
 from tqdm import tqdm
 import random
 import re
-from main import logger
-
 from model.util import *
 
 
@@ -14,13 +12,13 @@ class data_loader(object):
         self.config = config
         self.sel_relation = set(config['sel_label']) if config['sel_label'] else None
 
-    def load(self, use_small=None):
+    def load(self, use_small=False):
         dataset_ret = []
-        pbar = tqdm(total=len(self.dataset) if not use_small else use_small)
+        pbar = tqdm(total=len(self.dataset) if not use_small else 100)
         badcase = 0
 
         for i, data in enumerate(self.dataset):
-            if use_small and i == use_small:
+            if use_small and i == 100:
                 print('use_samll', i)
                 break
 
@@ -98,10 +96,8 @@ class data_loader(object):
                 dataset_ret.append([feature, positions, types, att_label, label, pattern])
             pbar.update(1)
         pbar.close()
-        logger.info('badcase: {}'.format(badcase))
         self.dataset = dataset_ret
-        logger.info('load data: {}'.format(len(self.dataset)))
-
+        return badcase
 
     def load_v2(self, use_small=None):
         dataset_ret = []

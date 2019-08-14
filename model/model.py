@@ -143,8 +143,9 @@ class model(object):
             #attention = tf.clip_by_value(self.attentions, 1e-10, 1) # keas.loss内置这一步
 
             if self.config['attention_regularization']:
-                loss_a = tf.keras.losses.kullback_leibler_divergence(y_true=self.att_labels, y_pred=self.attentions)
-                self.kl = loss_a
+                self.kl = tf.keras.losses.kullback_leibler_divergence(y_true=self.att_labels, y_pred=self.attentions)
+                attentions = tf.clip_by_value(self.attentions, 10e-10, 1.0)
+                loss_a = -tf.reduce_sum(self.att_labels * tf.log(attentions), -1)
                 self.loss = tf.reduce_mean(loss_c + self.config['beta'] * loss_a)
             else:
                 self.loss = tf.reduce_mean(loss_c)
@@ -280,7 +281,7 @@ class model(object):
 
     def run_evaule(self, val_data):
         model_dir = './ckpt_model/'
-        model_dir = './best_model/' if self.mode == 'val2' else model_dir
+        model_dir = './best_model/' if self.mode == 'test' else model_dir
         print('restore model from {} for val or test'.format(model_dir))
         self.saver.restore(self.sess, model_dir)
 

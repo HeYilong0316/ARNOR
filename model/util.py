@@ -2,6 +2,7 @@ import re
 import json
 import os
 import logging
+import shutil
 import numpy as np
 
 
@@ -14,6 +15,7 @@ def load_data_file(filename, zero=True, lower=True):
     with open(filename, 'r', encoding='utf8') as r:
         for line in r:
             line = json.loads(line.strip())
+            line['sentText'] = line['sentText'].strip()
             if zero:
                 line['sentText'] = conver_num_to_zero(line['sentText'])
             if lower:
@@ -78,7 +80,8 @@ def get_labelDict(datasets, sel_label=None):
                     continue
                 label_vocab.add(rel['label'])
     label_vocab = sorted(label_vocab)
-    label_vocab = {label: i for i, label in enumerate(label_vocab)}
+    label_vocab = {label: i+1 for i, label in enumerate(label_vocab) if label!='None'}
+    label_vocab['None'] = 0
     return label_vocab
 
 
@@ -231,10 +234,13 @@ def build_maps(train_datas, config, logger):
         label_dict = get_labelDict([train_datas],  config['sel_label'])
         np.save('maps.npy', [vocab, type_dict, label_dict])
 
+    with open('config_file', 'w', encoding='utf8') as w:
+        json.dump(config, w)
+
     config['word_num'] = len(vocab)
     config['type_num'] = len(type_dict)
     config['label_num'] = len(label_dict)
-    config['position_num'] =config['pos_max'] if config['pos_max'] > 0 \
+    config['position_num'] = config['pos_max'] if config['pos_max'] > 0 \
         else max([len(d['sentText'].split(' ')) for d in train_datas])
 
     for k, v in config.items():
