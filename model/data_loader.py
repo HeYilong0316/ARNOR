@@ -1,8 +1,10 @@
 import numpy as np
 from tqdm import tqdm
-import random
+import nltk
 import re
+import random
 from model.util import *
+
 
 
 class data_loader(object):
@@ -11,23 +13,27 @@ class data_loader(object):
         self.dataset = dataset
         self.config = config
         self.sel_relation = set(config['sel_label']) if config['sel_label'] else None
+        self.label_pre_map = config['label_map'] if config['label_map'] else None
 
     def load(self, use_small=False):
         dataset_ret = []
         pbar = tqdm(total=len(self.dataset) if not use_small else 100)
-        badcase = 0
-
+        datas_count = {'all':0}
+        badcase = {}
+        ignore = {}
+        pos_max = 0
         for i, data in enumerate(self.dataset):
             if use_small and i == 100:
                 print('use_samll', i)
                 break
 
             sentText = data['sentText']
-            sentText = re.sub('\s+', ' ', sentText) # 删除多于空格
+            sentText = re.sub(r'"', ' \'\' ', sentText) # deal case like "aaa bbb"
+            sentText = re.sub(r'\s+', ' ', sentText.strip())  # remove extra spaces
             relation = data['relationMentions']
             entitys = data['entityMentions']
 
-            # 构建entity到type的映射表
+            # build entity to type mapping for type embedding
             entity_to_type = {}
             for entity in entitys:
                 mentions = '<START>{}<END>'.format(entity['text']).split(' ')
@@ -35,17 +41,22 @@ class data_loader(object):
                     entity_to_type[mention] = entity['label']
 
             for rel in relation:
-                if self.sel_relation and rel['label'] not in self.sel_relation:
+
+                if self.label_pre_map and rel['label'] in self.label_pre_map:
+                    rel['label'] = self.label_pre_map[rel['label']]
+
+                if (self.sel_relation and rel['label'] not in self.sel_relation) or ('is_noise' in rel and rel['is_noise']):
+                    if rel['label'] not in ignore:
+                        ignore[rel['label']] = 0
+                    ignore[rel['label']] += 1
                     continue
 
                 entity1 = rel['em1Text']
                 entity2 = rel['em2Text']
                 label = conver_token_to_id(rel['label'], self.config['label_dict'])
 
-
-                # todo: 用之前的entity1 pattern entity2 的方法找， 然后去位置考前的
-                ent1_ent2_search = re.search(r'(?: |^)({0} (.*?) {1})(?: |$)'.format(entity1, entity2), sentText)
-                ent2_ent1_search = re.search(r'(?: |^)({1} (.*?) {0})(?: |$)'.format(entity1, entity2), sentText)
+                ent1_ent2_search = re.search(r'(?: |^)({0}( (?:.*?) | ){1})(?: |$)'.format(entity1, entity2), sentText)
+                ent2_ent1_search = re.search(r'(?: |^)({1}( (?:.*?) | ){0})(?: |$)'.format(entity1, entity2), sentText)
                 if ent1_ent2_search and ent2_ent1_search:
                     find = ent1_ent2_search if ent1_ent2_search.start() < ent2_ent1_search.start() else ent2_ent1_search
                     flag = 0 if ent1_ent2_search.start() < ent2_ent1_search.start() else 1
@@ -56,9 +67,11 @@ class data_loader(object):
                     find = ent2_ent1_search
                     flag = 1
                 else:
-                    badcase += 1
+                    if rel['label'] not in badcase:
+                        badcase[rel['label']] = 0
+                    badcase[rel['label']] += 1
                     continue
-                pattern = find.group(2)
+                pattern = find.group(2).strip()
                 start, end = find.span(1)
 
                 if flag == 0:
@@ -73,9 +86,9 @@ class data_loader(object):
                 positions = get_positions(sentence, flag, self.config['pos_max'])
                 types = get_types(sentence, entity_to_type, self.config['type_dict'])
 
-                # 构建每个词的id 和 att_label
+                # conver word to id and build attetion regulation label
                 feature = []
-                att_label = [0.] * len(sentence)  # 用于attetion regulation
+                att_label = [0.] * len(sentence)  # for attetion regulation
                 att_flag = 0
                 for i, word in enumerate(sentence):
                     if word[:7] == '<START>':
@@ -92,14 +105,19 @@ class data_loader(object):
                     feature.append(wordid)
                 fenmu = sum(att_label)
                 att_label = [f / fenmu for f in att_label]
-
+                pos_max = max(pos_max, max(positions[0]), max(positions[1]))
                 dataset_ret.append([feature, positions, types, att_label, label, pattern])
+                if rel['label'] not in datas_count:
+                    datas_count[rel['label']] = 0
+                datas_count[rel['label']] += 1
+                datas_count['all'] += 1
             pbar.update(1)
         pbar.close()
         self.dataset = dataset_ret
-        return badcase
+        return datas_count, badcase, ignore, pos_max
 
     def load_v2(self, use_small=None):
+        # Deprecated
         dataset_ret = []
         pbar = tqdm(total=len(self.dataset) if not use_small else use_small)
 
@@ -127,11 +145,11 @@ class data_loader(object):
                 # 对于每一对entity pair, 在句子中存在entity1(.*?)entity2 和 entity2(.*?)entity1两种情况
                 # 利用正则表达式找出以上的所有情况
                 findalls = []
-                findall = re.finditer(r'(?: |^)({0}( .*? ){1})(?: |$)'.format(entity1, entity2), sentText)
+                findall = re.finditer(r'(?:[ ]|^)({0}( .*? ){1})(?:[ ]|$)'.format(entity1, entity2), sentText)
                 for find in findall:
                     if find:
                         findalls.append((find, 0))
-                findall = re.finditer(r'(?: |^)({1}( .*? ){0})(?: |$)'.format(entity1, entity2), sentText)
+                findall = re.finditer(r'(?:[ ]|^)({1}( .*? ){0})(?:[ ]|$)'.format(entity1, entity2), sentText)
                 for find in findall:
                     if find:
                         findalls.append((find, 1))
@@ -178,6 +196,7 @@ class data_loader(object):
 
         print('load data: {}'.format(len(dataset_ret)))
         self.dataset = dataset_ret
+
 
     def minibatch(self, batch_size, shuffle=False, redistribution=False, trustable_pattern=None):
         idxs = list(range(len(self.dataset)))

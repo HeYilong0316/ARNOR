@@ -3,6 +3,8 @@ import json
 import os
 import logging
 import shutil
+import unicodedata
+
 import numpy as np
 
 
@@ -15,13 +17,18 @@ def load_data_file(filename, zero=True, lower=True):
     with open(filename, 'r', encoding='utf8') as r:
         for line in r:
             line = json.loads(line.strip())
-            line['sentText'] = line['sentText'].strip()
+            line['sentText'] \
+                = unicodedata.normalize('NFKD', line['sentText'].strip()).encode('ascii', 'ignore').decode()
             if zero:
                 line['sentText'] = conver_num_to_zero(line['sentText'])
             if lower:
                 line['sentText'] = line['sentText'].lower()
 
             for i, rel in enumerate(line['relationMentions']):
+                line['relationMentions'][i]['em1Text'] \
+                    = unicodedata.normalize('NFKD', rel['em1Text'].strip()).encode('ascii', 'ignore').decode()
+                line['relationMentions'][i]['em2Text'] \
+                    = unicodedata.normalize('NFKD', rel['em2Text'].strip()).encode('ascii', 'ignore').decode()
                 if lower:
                     line['relationMentions'][i]['em1Text'] = rel['em1Text'].lower()
                     line['relationMentions'][i]['em2Text'] = rel['em2Text'].lower()

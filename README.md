@@ -42,8 +42,12 @@ Download the data and put them in the datas folder.
 
 -|P|R|F1
 -|-|-|-
-DEV|94.36|54.28|68.91
-TEST|90.00|51.51|65.52
+DEV|-|-|-
+TEST|-|-|-
 
 ### version 2.0 datas
-continue
+
+-|P|R|F1
+-|-|-|-
+DEV|-|-|-
+TEST|-|-|-

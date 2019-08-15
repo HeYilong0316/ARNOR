@@ -11,7 +11,7 @@ class model(object):
         self.lr = config['lr'] if 'lr' in config else None
         self.id_to_label = {v: k for k, v in self.config['label_dict'].items()}
         self.trustable_pattern = trustable_pattern
-        self.mode = mode
+        self.mode = mode.lower()
 
     def placeholder_op(self):
         
@@ -47,6 +47,11 @@ class model(object):
                                          shape=[],
                                          dtype=tf.float32)
 
+        self.dropout = tf.placeholder(name='dropout',
+                                      shape=[],
+                                      dtype=tf.float32
+                                      )
+
 
 
 
@@ -54,24 +59,28 @@ class model(object):
         
         with tf.variable_scope('embedding'):
             word_embedding_matrix = tf.get_variable(name='word_embedding_matrix',
-                                             shape=[self.config['word_num'], self.config['word_dim']],
-                                             dtype=tf.float32
-                                             )
+                                                    shape=[self.config['word_num'], self.config['word_dim']],
+                                                    dtype=tf.float32,
+                                                    initializer=tf.contrib.layers.xavier_initializer()
+                                                    )
 
             pos1_embedding_matrix = tf.get_variable(name='pos1_embedding_matrix',
-                                             shape=[self.config['position_num'], self.config['position_dim']],
-                                             dtype=tf.float32
-                                             )
+                                                    shape=[self.config['position_num'], self.config['position_dim']],
+                                                    dtype=tf.float32,
+                                                    initializer=tf.contrib.layers.xavier_initializer()
+                                                    )
 
             pos2_embedding_matrix = tf.get_variable(name='pos2_embedding_matrix',
-                                             shape=[self.config['position_num'], self.config['position_dim']],
-                                             dtype=tf.float32
-                                             )
+                                                    shape=[self.config['position_num'], self.config['position_dim']],
+                                                    dtype=tf.float32,
+                                                    initializer=tf.contrib.layers.xavier_initializer()
+                                                    )
 
             type_embedding_matrix = tf.get_variable(name='type_embedding_matrix',
-                                             shape=[self.config['type_num'], self.config['type_dim']],
-                                             dtype=tf.float32
-                                             )
+                                                    shape=[self.config['type_num'], self.config['type_dim']],
+                                                    dtype=tf.float32,
+                                                    initializer=tf.contrib.layers.xavier_initializer()
+                                                    )
 
             word_embeddings = tf.nn.embedding_lookup(params=word_embedding_matrix,
                                                      ids=self.word_ids,
@@ -90,28 +99,31 @@ class model(object):
                                                      name='type_embeddings_look_up')
 
             bilstm_input = tf.concat([word_embeddings, pos1_embeddings, pos2_embeddings, type_embeddings], -1)
+            bilstm_input = tf.nn.dropout(bilstm_input, keep_prob=self.dropout)
 
         with tf.variable_scope('BiLSTM_ATT'):
+            # bi-lstm layer
             lstm_cell_forward = tf.keras.layers.LSTMCell(self.config['hidden_dim']//2, name='lstm_cell_forward')
             lstm_cell_backward = tf.keras.layers.LSTMCell(self.config['hidden_dim']//2, name='lstm_cell_backward')
-
-            # (B, max_length, hidden_dim)
             lstm_output, _ = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_cell_forward,
                                                              cell_bw=lstm_cell_backward,
                                                              inputs=bilstm_input,
                                                              sequence_length=self.lengths,
                                                              dtype=tf.float32
-                                                        )
+                                                             )
+            # (B, max_length, hidden_dim)
             hiddens = tf.concat(lstm_output, -1)
 
+            # attention layer
             # (B, max_length, hidden_dim)
-            hiddens_for_att =  tf.squeeze(tf.keras.layers.Dense(1)(hiddens), -1)
+            hiddens_for_att =  tf.squeeze(tf.keras.layers.Dense(1, activation=tf.tanh, use_bias=False)(hiddens), -1)
             # (B, max_length)
             self.attentions = self.attention_fun(hiddens_for_att, self.lengths)
-
             # (B, hidden_dim)
             hidden_att = tf.reduce_sum(hiddens * tf.expand_dims(self.attentions, -1), 1)
-
+            hidden_att = tf.tanh(hidden_att)
+            # FC
+            #hidden_att = tf.keras.layers.Dense(self.config['hidden_dim'])(hidden_att)
             self.logits = tf.keras.layers.Dense(self.config['label_num'])(hidden_att)
 
 
@@ -140,11 +152,10 @@ class model(object):
 
         with tf.variable_scope('loss'):
             loss_c = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.label_ids, logits=self.logits)
-            #attention = tf.clip_by_value(self.attentions, 1e-10, 1) # keas.loss内置这一步
 
             if self.config['attention_regularization']:
                 self.kl = tf.keras.losses.kullback_leibler_divergence(y_true=self.att_labels, y_pred=self.attentions)
-                attentions = tf.clip_by_value(self.attentions, 10e-10, 1.0)
+                attentions = tf.clip_by_value(self.attentions, 1e-10, 1.0)
                 loss_a = -tf.reduce_sum(self.att_labels * tf.log(attentions), -1)
                 self.loss = tf.reduce_mean(loss_c + self.config['beta'] * loss_a)
             else:
@@ -230,14 +241,16 @@ class model(object):
                 self.lengths:lengths
                 }
 
-        if self.lr is not None:
+        if self.mode == 'train':
+            feed[self.dropout] = self.config['dropout']
             feed[self.learn_rate] = self.lr
-
-        if att_labels is not None:
             feed[self.att_labels] = att_labels
-
-        if labels is not None:
             feed[self.label_ids] = labels
+
+        else:
+            feed[self.dropout] = 1.0
+
+
 
         return feed
 
