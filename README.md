@@ -23,8 +23,8 @@ Download the data and put them in the datas folder.
 
 ## Structure
 ```
+ARNOR
 │  main.py
-│  tree.txt
 │  
 ├─datas
 │      dev.json
